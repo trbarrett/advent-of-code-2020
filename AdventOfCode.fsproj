@@ -9,6 +9,8 @@
         <None Include="Helper.fsx" />
         <None Include="Day1Part1.fsx" />
         <None Include="Day1Part2.fsx" />
+        <None Include="Day2Part1.fsx" />
+        <None Include="Day2Part2.fsx" />
     </ItemGroup>
 
 </Project>
