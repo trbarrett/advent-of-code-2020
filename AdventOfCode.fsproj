@@ -26,6 +26,8 @@
         <None Include="Day9Part2.fsx" />
         <None Include="Day10Part1.fsx" />
         <None Include="Day10Part2.fsx" />
+        <None Include="Day11Part1.fsx" />
+        <None Include="Day11Part2.fsx" />
     </ItemGroup>
 
 </Project>
