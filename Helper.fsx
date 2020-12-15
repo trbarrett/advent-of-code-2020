@@ -1,3 +1,5 @@
+open System
+
 #I __SOURCE_DIRECTORY__
 
 open System.IO
@@ -20,6 +22,12 @@ let (|KeyValue|) (keyValuePair : KeyValuePair<'k, 'v>) : 'k * 'v =
 
 module Tuple =
     let flip (x,y) = y, x
+
+module Int64 =
+    let tryParse (str : string) =
+        match Int64.TryParse str with
+        | true, x -> Some x
+        | _ -> None
 
 module Map =
     let extendListValue key value m =
