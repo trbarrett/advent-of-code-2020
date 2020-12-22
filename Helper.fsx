@@ -29,6 +29,12 @@ module Int64 =
         | true, x -> Some x
         | _ -> None
 
+module Int32 =
+    let tryParse (str : string) =
+        match Int32.TryParse str with
+        | true, x -> Some x
+        | _ -> None
+
 module Seq =
     let unzip sequence =
         let (lstA, lstB) =
