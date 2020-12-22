@@ -29,6 +29,13 @@ module Int64 =
         | true, x -> Some x
         | _ -> None
 
+module Seq =
+    let unzip sequence =
+        let (lstA, lstB) =
+            Seq.foldBack (fun (a,b) (accA, accB) ->
+                a::accA, b::accB) sequence ([],[])
+        (Seq.ofList lstA, Seq.ofList lstB)
+
 module Map =
 
     let keys map =

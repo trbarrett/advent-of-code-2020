@@ -41,6 +41,7 @@
         <None Include="Day17Part2.fsx" />
         <None Include="Day18Part1.fsx" />
         <None Include="Day18Part2.fsx" />
+        <None Include="Day21.fsx" />
     </ItemGroup>
 
 </Project>
