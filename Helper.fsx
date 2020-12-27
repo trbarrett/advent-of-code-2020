@@ -36,6 +36,34 @@ module Seq =
                 a::accA, b::accB) sequence ([],[])
         (Seq.ofList lstA, Seq.ofList lstB)
 
+    let tryMax sequence =
+        if Seq.isEmpty sequence
+        then None
+        else Some (Seq.max sequence)
+
+    let tryMin sequence =
+        if Seq.isEmpty sequence
+        then None
+        else Some (Seq.min sequence)
+
+    let tryMaxWithIndex sequence =
+        let _, maxValue, maxIndex =
+            sequence |> Seq.fold (fun (index, maxSoFar, maxIndex) v ->
+                if v > maxSoFar then (index+1, v, index+1)
+                else (index+1, maxSoFar, maxIndex)) (-1, System.Int32.MinValue, -1)
+        if maxIndex = -1
+        then None
+        else Some (maxValue, maxIndex)
+
+    let tryMinWithIndex sequence =
+        let _, minValue, minIndex =
+            sequence |> Seq.fold (fun (index, minSoFar, maxIndex) v ->
+                if v < minSoFar then (index+1, v, index+1)
+                else (index+1, minSoFar, maxIndex)) (-1, System.Int32.MaxValue, -1)
+        if minIndex = -1
+        then None
+        else Some (minValue, minIndex)
+
 module Map =
 
     let keys map =
