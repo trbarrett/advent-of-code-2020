@@ -47,6 +47,7 @@
         <None Include="Day23Naive.fsx" />
         <None Include="Day23Span.fsx" />
         <None Include="Day23LLArr.fsx" />
+        <None Include="Day24.fsx" />
     </ItemGroup>
 
 </Project>

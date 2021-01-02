@@ -64,6 +64,9 @@ module Seq =
         then None
         else Some (minValue, minIndex)
 
+module Set =
+    let collect f set = Set.map f set |> Set.unionMany
+
 module Map =
 
     let keys map =
