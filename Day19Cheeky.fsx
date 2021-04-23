@@ -107,10 +107,11 @@ let part1 =
     let regexp = convertToRegexp rules |> Regex
     messages |> Seq.filter regexp.IsMatch |> Seq.length
 
+part1 |> (printfn "Part1: %A")
+
 let part2 =
     let (rules, messages) = readInput "day19-2.txt" |> Seq.toList |> parse
     let regexp = convertToRegexp rules |> Regex
     messages |> Seq.filter regexp.IsMatch |> Seq.length
 
-part1 |> (printfn "Part1: %A")
 part2 |> (printfn "Part2: %A")
