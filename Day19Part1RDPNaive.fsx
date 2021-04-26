@@ -1,7 +1,7 @@
 #load "./Helper.fsx"
 open Helper
 
-// A complicated way of doing a RDP
+// A naive way of doing a RDP without backtracking. Only works on part 1
 
 type Input = | A | B
 
@@ -70,10 +70,7 @@ let getMatch rules input =
 
 let (rules, messages) = readInput "day19.txt" |> Seq.toList |> parse
 
-// Doesn't work for part 2
-// - The course I watched mentions the issue I'm running into with part 2, but
-// doesn't describe how to resolve it. I'm certain there is a way, but I would
-// need to do some more research.
+// Doesn't work for part 2 - It doesn't do backtracking correctly
 let mutable matchCount : int = 0
 messages |> Seq.iteri (fun i m ->
     let (result, remaining) = getMatch rules m
