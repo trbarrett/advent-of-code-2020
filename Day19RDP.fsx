@@ -6,6 +6,11 @@ open Helper
 // all that good. There's probably a much more elegant way of dealing with the
 // stacks and organising the code
 
+// Idea: This is a depth first way of doing it, be we could do breadth first,
+// and try all the OR cases at the same time.
+// Another depth first option is that instead of manually managing the runstack,
+// we could use continuations (via closures) to jump to different attempts, and
+// let the runtime manage multiple stacks implicitly via those closures.
 type Input = | A | B
 
 type RuleCase =

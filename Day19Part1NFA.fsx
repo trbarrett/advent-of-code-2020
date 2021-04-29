@@ -149,7 +149,7 @@ let printStates nfa =
     let inputToString = function
         | A -> "A"
         | B -> "B"
-        | Epsilon -> "e"
+        | Epsilon -> "ε"
 
     let printStateTransition state (transitionInput, transitionTarget) =
         match state.Accepting with

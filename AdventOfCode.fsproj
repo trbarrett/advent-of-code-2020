@@ -43,6 +43,7 @@
         <None Include="Day18Part2.fsx" />
         <None Include="Day19Cheeky.fsx" />
         <None Include="Day19Part1NFA.fsx" />
+        <None Include="Day19PDA.fsx" />
         <None Include="Day19Part1RDPNaive.fsx" />
         <None Include="Day19RDP.fsx" />
         <None Include="Day19Part1.fsx" />
