@@ -229,11 +229,6 @@ let addRuleCaseToPDA ruleNo (case : RuleCase) (mainLoopState, existingStates) =
     // we want to start by popping the rule we are interested in
     let startCaseTransition =
         symbolPopTransition (RuleNo ruleNo) ruleCaseFirstState.Id
-    //let startCaseState =
-    //    newState (sprintf "%s-(start)" caseStr) [ startCaseTransition ]
-    //let newStates = startCaseState::newStates
-    //let mainToSTartCaseTransition =
-    //    symbolPopTransition (RuleNo ruleNo) ruleCaseFirstState.Id
 
     let mainLoopState =
         { mainLoopState with
@@ -269,77 +264,95 @@ let convertStringToInput (str : string) =
 
 // For each state in the PDA, determine what top-of-stack/input combinations go
 // to what next state, with a pop or not.
-// We can epsilon transition, for free, but once we add something to the stack
-// we can't take additional input or pop the stack.
+
+type PushPopItem =
+    | Push of StackSymbol
+    | Pop of StackSymbol
 
 type EpsilonBuildState =
     { State : State
       Input : Input
-      Popped : StackSymbol option
-      PushStack : StackSymbol list }
+      PushPopStack : PushPopItem list
+      Accepting : bool }
 
 type RuleBuildState =
-    | PureEpsilon of EpsilonBuildState
-    // once we've added an input, popped a symbol, or pushed a symbol
-    // all we can do is extend the stack
-    | StackExtendable of EpsilonBuildState
+    | Complete of EpsilonBuildState
+    | Building of EpsilonBuildState
 
 let getState (buildState : RuleBuildState) =
     match buildState with
-    | PureEpsilon x -> x.State
-    | StackExtendable x -> x.State
+    | Complete x -> x.State
+    | Building x -> x.State
 
 let getBuild (buildState : RuleBuildState) =
     match buildState with
-    | PureEpsilon x -> x
-    | StackExtendable x -> x
+    | Complete x -> x
+    | Building x -> x
 
-let findBuildTransitions (pdsStates : Map<Guid, State>) buildState =
+let pushTransitionOnBuildState transitionPush buildState =
+   { State = buildState.State
+     Input = buildState.Input
+     PushPopStack = Push transitionPush::buildState.PushPopStack
+     Accepting = buildState.Accepting }
+
+let popTransitionFromBuildState transitionPop buildState =
+    match buildState.PushPopStack with
+    // if the top of the stack has a push symbol that matches we can
+    // cancel it out
+    | (Push stackSymbol)::tail when stackSymbol = transitionPop ->
+        Some
+            { State = buildState.State
+              Input = buildState.Input
+              PushPopStack = tail
+              Accepting = buildState.Accepting }
+    // if the top of the stack has a push symbol and it doesn't match,
+    // then this transition isn't valid
+    | Push _::_ -> None
+    // otherwise if the top of the stack doesn't have a pop symbol
+    // we can pop this one
+    | stack ->
+        Some
+            { State = buildState.State
+              Input = buildState.Input
+              PushPopStack = Pop transitionPop::stack
+              Accepting = buildState.Accepting }
+
+let doBuildTransitions (pdsStates : Map<Guid, State>) buildState =
     let transitions = (getState buildState).Transitions
     match buildState with
-    | PureEpsilon _ ->
+    | Complete x -> Set.empty // can't do anything more with complete states
+    | Building x ->
         transitions
-        |> List.collect (fun t ->
-            match t.In, t.Pop, t.Push with
-            | Epsilon, None, None
-            | Epsilon, Some (In (Epsilon)), None ->
-                [PureEpsilon
-                     { State = Map.find t.Target pdsStates
-                       Input = Epsilon
-                       Popped = None
-                       PushStack = [] }]
-            | Epsilon, None, Some symbol
-            | Epsilon, Some (In (Epsilon)), Some symbol ->
-                [StackExtendable
-                     { State = Map.find t.Target pdsStates
-                       Input = Epsilon
-                       Popped = None
-                       PushStack = [symbol] } ]
-            | input, popSymbol, _ ->
-                [StackExtendable
-                     { State = Map.find t.Target pdsStates
-                       Input = input
-                       Popped = popSymbol
-                       PushStack = match t.Push with
-                                   | Some s -> [s]
-                                   | None -> [] }] )
-    | StackExtendable x ->
-        transitions
-        |> List.collect (fun t ->
-            match t.In, t.Pop with
-            // we can only do something with no input or pop at this point
-            | Epsilon, None
-            | Epsilon, Some (In (Epsilon)) ->
-                [StackExtendable
-                     { State = Map.find t.Target pdsStates
-                       Input = x.Input
-                       Popped = x.Popped
-                       PushStack = match t.Push with
-                                   | Some s -> s::x.PushStack
-                                   | None -> x.PushStack }]
-             | _ -> [])
-    |> Set
+        |> List.choose (fun t ->
+            let transitionTarget = Map.find t.Target pdsStates
+            let buildState = // start by targeting the new target
+                { State = transitionTarget
+                  Input = Epsilon
+                  PushPopStack = x.PushPopStack
+                  Accepting = transitionTarget.Accepting }
 
+            // pop if it makes sense
+            let buildState =
+                match t.Pop with
+                | None | Some (In (Epsilon)) -> Some buildState
+                | Some symbol ->
+                    popTransitionFromBuildState symbol buildState
+
+            // push, if it makes sense
+            let buildState =
+                buildState
+                |> Option.map (fun buildState ->
+                    match t.Push with
+                    | None | Some (In (Epsilon)) -> buildState
+                    | Some symbol ->
+                        pushTransitionOnBuildState symbol buildState)
+
+            buildState
+            |> Option.map (fun buildState ->
+                match t.In with
+                | Epsilon -> Building buildState
+                | input -> Complete { buildState with Input = input }))
+        |> Set
 
 let rec doAllBuildTransitions
     (pdsStates : Map<Guid, State>)
@@ -347,9 +360,8 @@ let rec doAllBuildTransitions
     =
     let next =
         currentBuild
-        |> Set.collect (findBuildTransitions pdsStates)
+        |> Set.collect (doBuildTransitions pdsStates)
         |> Set.union currentBuild
-        // TODO we need to remove pure subsets of push stacks
     if next = currentBuild
     then next
     else doAllBuildTransitions pdsStates next
@@ -364,76 +376,65 @@ type LookupInput =
 type LookupOutput =
     { StateId : Guid
       StateName : string
-      PopStack : bool
-      ConsumeInput : bool
+      PopStack : StackSymbol list
       Accepting : bool
       PushStack : StackSymbol list }
 
 type LookupTable = Map<LookupInput, LookupOutput list>
 
-let rec getAllSubsets (xs : 'a list) subsets =
-    if List.length xs > 1
-    then
-        let tail = List.tail xs
-        getAllSubsets tail (tail::subsets)
-    else subsets
-
-let cleanSubsetInputs baseState (states : Set<EpsilonBuildState>) =
-    states
-    |> Seq.groupBy (fun x ->
-        { StateId = baseState.Id
-          StateName = baseState.Name
-          Input = x.Input
-          TopOfStack = x.Popped })
-    |> Seq.map (fun (k, vs) ->
-        k,
-        vs
-        |> Seq.groupBy (fun x -> (x.Input, x.Popped))
-        |> Seq.collect(fun (_, buildStates) ->
-            if Seq.length buildStates = 1
-            then buildStates
-            else
-                // It isn't useful to have multiple cases that just differ
-                // by the pushstack. Remove any matching subsets
-                let possibleSubsets =
-                    buildStates
-                    |> Seq.collect (fun x -> getAllSubsets x.PushStack [])
-                    |> Set
-
-                buildStates
-                |> Seq.filter (fun buildState ->
-                    Set.contains buildState.PushStack possibleSubsets
-                    |> not) ) )
+let getInputOrAcceptingRuleBuildState buildState =
+    match buildState with
+    | Complete buildState -> Some buildState
+    | Building buildState when buildState.Accepting = true -> Some buildState
+    | _ -> None
 
 let buildLookupForState pdaState (pdaStates : Map<Guid, State>) =
     let starting =
-        PureEpsilon { State = pdaState; Input = Epsilon; Popped = None; PushStack = [] }
+        Building { State = pdaState; Input = Epsilon; PushPopStack = []; Accepting = false }
     //printfn "Build Lookup For State"
     doAllBuildTransitions pdaStates (Set [ starting ])
     //|> tee (Seq.iter (fun x -> printfn "%A" x))
-    |> Set.remove starting // starting set isn't a valid transition
-    |> Set.map getBuild
-    |> cleanSubsetInputs pdaState
-    |> Seq.map (fun (input, buildStates) ->
-        input,
-        buildStates
-        |> Seq.toList
-        |> List.map (fun buildState ->
+    |> Seq.choose getInputOrAcceptingRuleBuildState
+    |> Seq.map (fun buildState ->
+        // stack will need to be poped in reverse order to the pop symbols
+        // we have on our pushpop stack. We should only have pops at the bottom
+        let popStack =
+            buildState.PushPopStack
+            |> List.choose (function | Pop pop -> Some pop | _ -> None )
+            |> List.rev
+
+        let pushStack =
+            buildState.PushPopStack
+            |> List.choose (function | Push push -> Some push | _ -> None )
+
+        let lookup =
+            { StateId = pdaState.Id
+              StateName = pdaState.Name
+              Input = buildState.Input
+              TopOfStack = popStack |> List.tryHead }
+
+        let lookupOut =
             { StateId = buildState.State.Id
-              StateName = pdaStates |> Map.find buildState.State.Id |> fun x -> x.Name
-              PopStack = Option.isSome buildState.Popped
-              ConsumeInput = buildState.Input <> Epsilon
-              Accepting = buildState.State.Accepting
-              PushStack = buildState.PushStack } ))
+              StateName = buildState.State.Name
+              PopStack = popStack
+              Accepting = buildState.Accepting
+              PushStack = pushStack }
+
+        lookup, lookupOut)
     |> Seq.toList
 
-let buildLookupTable (pdsStates : Map<Guid, State>) =
+let buildLookupTable (pdsStates : Map<Guid, State>) : LookupTable =
+    // This can be quite slow!
+    // There's probably a dynamic programming solution to make this much faster
     pdsStates
     //|> Map.filter (fun k v -> v.Name = "StartPDA")
     |> Map.toList
     |> List.collect (fun (_, state) ->
         buildLookupForState state pdsStates)
+    |> List.groupBy (fun (lookupIn, _) -> lookupIn)
+    |> List.map (fun (lookupIn, xs) -> lookupIn, xs |> List.unzip |> snd)
     |> Map
+
 
 
 //////////////////////////////////////////
@@ -455,88 +456,61 @@ let doLookupTransitions
     (lookupTable : LookupTable)
     (runState : RunState) =
 
-    // four possible start points for transitions,
+    // two possible start points for transitions,
     // some of them might be duplicates
     let possibleInputs =
+        // Epsilon inputs will happen when there's no more input.
+        // They only go to final transitions
         [ { StateId = runState.StateId
             StateName = runState.StateName
             Input = input
             TopOfStack = runState.Stack |> List.tryHead }
           { StateId = runState.StateId
             StateName = runState.StateName
-            Input = Epsilon
-            TopOfStack = runState.Stack |> List.tryHead }
-          { StateId = runState.StateId
-            StateName = runState.StateName
             Input = input
-            TopOfStack = None }
-          { StateId = runState.StateId
-            StateName = runState.StateName
-            Input = Epsilon
-            TopOfStack = None }]
+            TopOfStack = None } ]
           |> Set
 
     possibleInputs
     |> Seq.choose(fun input -> lookupTable |> Map.tryFind input)
     |> Seq.collect id
-    |> Seq.map (fun out ->
+    |> Seq.choose (fun out ->
+        // pop then push from the stack
+        // we may fail here if the popstack doesn't match what's on the stack
         let stack =
-            if out.PopStack
-            then List.tail runState.Stack
-            else runState.Stack
-        { runState with
-            StateId = out.StateId
-            StateName = out.StateName
-            Accepting = out.Accepting
-            Stack = out.PushStack@stack },
-        out.ConsumeInput || out.Accepting)
+            (Some runState.Stack, out.PopStack)
+            ||> List.fold (fun stack pop ->
+                match stack with
+                | Some (head::tail) when head = pop -> Some tail
+                | _ -> None)
+
+        let stack = stack |> Option.map (fun stack -> out.PushStack@stack)
+
+        stack
+        |> Option.map (fun stack ->
+            { runState with
+                StateId = out.StateId
+                StateName = out.StateName
+                Accepting = out.Accepting
+                Stack = stack } ))
     |> Set
 
-let setPartition predicate set =
-    ((Set.empty, Set.empty), set)
-    ||> Set.fold (fun (setTrue, setFalse) x ->
-        if predicate x
-        then Set.add x setTrue, setFalse
-        else setTrue, Set.add x setFalse)
-
-let rec doAllInputTransitions input lookupTable runStates completed =
-    //printfn "Do All Input Transitions"
-    //runStates |> Set.iter printRunState
-    let newStates =
-        runStates
-        |> Set.collect (doLookupTransitions input lookupTable)
-
-    let consuming, incomplete =
-        newStates |> setPartition snd
-
-    let consuming = consuming |> Set.map fst
-    let incomplete = incomplete |> Set.map fst
-
-    // if a state does not consume the input, we need to recurse to get
-    // to one that does
-    let completed = Set.union completed consuming
-    if Set.isEmpty incomplete
-    then completed
-    else doAllInputTransitions input lookupTable incomplete completed
+let rec doAllInputTransitions input lookupTable runStates =
+    runStates |> Set.collect (doLookupTransitions input lookupTable)
 
 let rec doesPDAAcceptInput' lookupTable input (runStates : Set<RunState>) =
     match input with
     | [] ->
-        //printfn ""
-        //printfn "Check if Accepting"
         let runStates =
-            doAllInputTransitions Epsilon lookupTable runStates Set.empty
+            doAllInputTransitions Epsilon lookupTable runStates
             |> Set.union runStates
-        // DO ALL ACCEPTING TRANSITIONS?
-        //runStates |> Set.iter printRunState
+
         // once we reach the end of the input, we accept it if any of the states
         // are an accepting state. Note in PDAs the stack does not need to be
         // empty to accept
         runStates |> Set.exists (fun x -> x.Accepting)
     | x::xs ->
-        //printfn ""
-        //printfn "Do next input: %s" (inputToString x)
-        let runStates = doAllInputTransitions x lookupTable runStates Set.empty
+        let runStates = doAllInputTransitions x lookupTable runStates
         if Set.isEmpty runStates
         then false // end immediately if there are no valid transitions for the input
         else doesPDAAcceptInput' lookupTable xs runStates
