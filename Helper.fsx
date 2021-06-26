@@ -78,6 +78,9 @@ module Map =
     let keys map =
         map |> Map.toSeq |> Seq.map fst
 
+    let values map =
+        map |> Map.toSeq |> Seq.map snd
+
     let mapValues f map =
         map |> Map.map (fun _ v -> f v)
 
